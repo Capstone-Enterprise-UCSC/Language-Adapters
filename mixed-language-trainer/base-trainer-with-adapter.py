@@ -126,7 +126,7 @@ def parse_args():
         type=str,
         default=None,
         help="A prefix to add before every source text (useful for T5 models).",
-    )
+    ) # is this useful for m2m100?
     parser.add_argument(
         "--preprocessing_num_workers",
         type=int,
@@ -204,7 +204,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--src_lang",
+        "--src_lang_adapter",
         type=str,
         default=None,
         help="Language on the encoder side of the adapter",
@@ -212,7 +212,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--tgt_lang",
+        "--tgt_lang_adapter",
         type=str,
         default=None,
         help="Language on the decoder side of the adapter",
@@ -383,7 +383,9 @@ def main():
 
     # Add lang adapters
     model.add_adapter("enc_ha", config=enc_config)
+    model.add_adapter("enc_en", config=enc_config)
     model.add_adapter("dec_en", config=dec_config)
+    model.add_adapter("dec_ha", config=dec_config)
 
     embedding_size = model.get_input_embeddings().weight.shape[0]
     if len(tokenizer) > embedding_size:
@@ -407,8 +409,12 @@ def main():
 
     len_train_dataloader = len(list(train_dataloader)[0])
 
-    # Activate lang adapters
-    model.train_adapter_pair(ac.Pair("enc_ha","dec_en"))
+    # Activate lang 
+    if args.src_lang_adapter is not None and args.tgt_lang_adapter is not None:
+        enc_lang = args.src_lang_adapter
+        dec_lang = args.tgt_lang_adapter
+        model.train_adapter_pair(ac.Pair("enc_"+enc_lang,"dec_"+dec_lang))
+        #model.set_active_adapters(ac.Pair("enc_"+enc_lang,"dec_"+dec_lang)) # this is not working for some reason
 
     no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight"]
     optimizer_grouped_parameters = [
@@ -602,5 +608,5 @@ def main():
 
 if __name__ == "__main__":
     # example of how to invoke trainer
-    # python3 -m train --data_path '/home/ss64293/projects/271b/data' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --output_dir 'mixed_training' --seed 42 --with_tracking
+    # python3 -m train --data_path '/Data/' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --output_dir 'mixed_training' --seed 42 --with_tracking --src_lang_adapter 'en' --tgt_lang_adapter 'ha' --checkpointing_steps 'epoch'
     main()
