@@ -407,6 +407,9 @@ def main():
 
     len_train_dataloader = len(list(train_dataloader)[0])
 
+    # Activate lang adapters
+    model.train_adapter_pair(ac.Pair("enc_ha","dec_en"))
+
     no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight"]
     optimizer_grouped_parameters = [
         {
