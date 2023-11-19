@@ -608,8 +608,8 @@ def main():
         # Save adapters
         if not os.path.exists(f'./lang_adapters/{experiment}'):
             os.mkdir(f'./lang_adapters/{experiment}')
-        model.save_adapter(f"./{args.output_dir}/{experiment}/encoder_english", "enc_ha")
-        model.save_adapter(f"./{args.output_dir}/{experiment}/decoder_hausa", "dec_en")
+        model.save_adapter(f"./{args.output_dir}/{experiment}/encoder_"+args.src_lang_adapter, "enc_"+args.src_lang_adapter)
+        model.save_adapter(f"./{args.output_dir}/{experiment}/decoder_"+args.tgt_lang_adapter, "dec_"+args.tgt_lang_adapter)
         if accelerator.is_main_process:
             tokenizer.save_pretrained(args.output_dir)
         with open(os.path.join(args.output_dir, "all_results.json"), "w") as f:
