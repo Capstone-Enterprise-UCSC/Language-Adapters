@@ -233,6 +233,9 @@ def get_tokenized_dataset(dataset_root_path, src_lang, tgt_lang, tokenizer, args
 
     dataset_name = f'{dataset_root_path}/{src_lang}-{tgt_lang}'
 
+    if not os.path.exists(dataset_name):
+        dataset_name = f'{dataset_root_path}/{tgt_lang}-{src_lang}'
+
     train_dataset = Dataset.from_pandas(pd.read_csv(f'{dataset_name}/cleaned_train.csv'))
     validation_dataset = Dataset.from_pandas(pd.read_csv(f'{dataset_name}/cleaned_dev.csv'))
 
@@ -573,4 +576,5 @@ def main():
 if __name__ == "__main__":
     # example of how to invoke trainer
     # python3 -m train --dataset_root_path '/home/ss64293/projects/271b/data' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --output_dir 'mixed_training' --seed 42 --with_tracking
+    # python3 -m base-trainer-without-adapter --dataset_root_path '/home/mkar/capstone/Language-Adapters/Data' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --num_train_epochs 1 --output_dir 'mixed_training' --seed 42 --with_tracking
     main()

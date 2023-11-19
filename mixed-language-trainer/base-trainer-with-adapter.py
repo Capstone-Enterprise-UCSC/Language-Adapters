@@ -618,5 +618,5 @@ def main():
 
 if __name__ == "__main__":
     # example of how to invoke trainer
-    # python3 -m base-trainer-with-adapter --data_path '/home/mkar/capstone/Language-Adapters/Data' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --output_dir 'mixed_training' --seed 42 --with_tracking --src_lang_adapter 'en' --tgt_lang_adapter 'ha' --checkpointing_steps 'epoch'
+    # python3 -m base-trainer-with-adapter --data_path '/home/mkar/capstone/Language-Adapters/Data' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --output_dir 'mixed_training' --seed 42 --num_train_epochs 1 --with_tracking --src_lang_adapter 'en' --tgt_lang_adapter 'ha' --checkpointing_steps 'epoch'
     main()
