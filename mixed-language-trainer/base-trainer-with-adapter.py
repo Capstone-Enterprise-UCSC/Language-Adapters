@@ -380,6 +380,8 @@ def main():
     tokenizer = M2M100Tokenizer.from_pretrained(f"facebook/{args.model_name_or_path}")
     model = M2M100ForConditionalGeneration.from_pretrained(f"facebook/{args.model_name_or_path}")
 
+    experiment = 'en-ha-mixed-1'
+
     # Configure lang adapters
     enc_config = "pfeiffer[output_adapter=False,monolingual_enc_adapter=True]"
     dec_config = "pfeiffer[output_adapter=False,monolingual_dec_adapter=True]"
@@ -603,6 +605,11 @@ def main():
         unwrapped_model.save_pretrained(
             args.output_dir, is_main_process=accelerator.is_main_process, save_function=accelerator.save
         )
+        # Save adapters
+        if not os.path.exists(f'./lang_adapters/{experiment}'):
+            os.mkdir(f'./lang_adapters/{experiment}')
+        model.save_adapter(f"./{args.output_dir}/{experiment}/encoder_english", "enc_ha")
+        model.save_adapter(f"./{args.output_dir}/{experiment}/decoder_hausa", "dec_en")
         if accelerator.is_main_process:
             tokenizer.save_pretrained(args.output_dir)
         with open(os.path.join(args.output_dir, "all_results.json"), "w") as f:
