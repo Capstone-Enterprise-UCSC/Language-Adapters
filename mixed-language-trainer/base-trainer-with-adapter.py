@@ -65,7 +65,7 @@ def parse_args():
     parser.add_argument(
         "--num_beams",
         type=int,
-        default=None,
+        default=1,
         help=(
             "Number of beams to use for evaluation. This argument will be "
             "passed to ``model.generate``, which is used during ``evaluate`` and ``predict``."
@@ -606,8 +606,8 @@ def main():
             args.output_dir, is_main_process=accelerator.is_main_process, save_function=accelerator.save
         )
         # Save adapters
-        if not os.path.exists(f'./lang_adapters/{experiment}'):
-            os.mkdir(f'./lang_adapters/{experiment}')
+        if not os.path.exists(f'./{args.output_dir}/{experiment}'):
+            os.mkdir(f'./{args.output_dir}/{experiment}')
         model.save_adapter(f"./{args.output_dir}/{experiment}/encoder_"+args.src_lang_adapter, "enc_"+args.src_lang_adapter)
         model.save_adapter(f"./{args.output_dir}/{experiment}/decoder_"+args.tgt_lang_adapter, "dec_"+args.tgt_lang_adapter)
         if accelerator.is_main_process:
@@ -618,5 +618,5 @@ def main():
 
 if __name__ == "__main__":
     # example of how to invoke trainer
-    # python3 -m base-trainer-with-adapter --data_path '/home/mkar/capstone/Language-Adapters/Data' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --output_dir 'mixed_training' --seed 42 --num_train_epochs 1 --with_tracking --src_lang_adapter 'en' --tgt_lang_adapter 'ha' --checkpointing_steps 'epoch'
+    # python3 -m base-trainer-with-adapter --data_path '/home/mkar/capstone/Language-Adapters/Data' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --output_dir 'mixed_training' --seed 42 --num_train_epochs 5 --with_tracking --src_lang_adapter 'en' --tgt_lang_adapter 'ha' --checkpointing_steps 'epoch'
     main()

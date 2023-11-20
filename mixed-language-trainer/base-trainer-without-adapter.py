@@ -64,7 +64,7 @@ def parse_args():
     parser.add_argument(
         "--num_beams",
         type=int,
-        default=None,
+        default=1,
         help=(
             "Number of beams to use for evaluation. This argument will be "
             "passed to ``model.generate``, which is used during ``evaluate`` and ``predict``."
