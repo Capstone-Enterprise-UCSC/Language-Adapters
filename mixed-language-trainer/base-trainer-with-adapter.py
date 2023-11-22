@@ -202,22 +202,6 @@ def parse_args():
         help="Model type to use if training from scratch.",
         choices=MODEL_TYPES,
     )
-
-    parser.add_argument(
-        "--src_lang_adapter",
-        type=str,
-        default=None,
-        help="Language on the encoder side of the adapter",
-        choices=["ha","en","ig","sw","yo"],
-    )
-
-    parser.add_argument(
-        "--tgt_lang_adapter",
-        type=str,
-        default=None,
-        help="Language on the decoder side of the adapter",
-        choices=["ha","en","ig","sw","yo"],
-    )
     
     parser.add_argument(
         "--checkpointing_steps",
@@ -317,10 +301,11 @@ def get_processed_dataset(data_path, src_langs, tgt_langs, tokenizer, args):
 
 # Custom Data Collator for Language Mixing
 class LanguagePairBatchCollator:
-    def __init__(self, dataset, batch_size, all_language_pairs):
+    def __init__(self, dataset, batch_size, all_language_pairs, shuffled=False):
         self.dataset = dataset
         self.batch_size = batch_size
         self.all_language_pairs = all_language_pairs
+        self.shuffled = shuffled
 
     def __call__(self, batch):
         batched_data = {}
@@ -330,7 +315,8 @@ class LanguagePairBatchCollator:
         
         num_samples = len(self.dataset)
         indices = list(range(num_samples))
-        random.shuffle(indices)
+        if self.shuffled:
+            random.shuffle(indices)
 
         shuffled_data = [self.dataset[i] for i in indices]
 
@@ -340,7 +326,10 @@ class LanguagePairBatchCollator:
             batched_data[(_src_lang, _tgt_lang)] = [filtered_data[i:i+self.batch_size] for i in range(0, filtered_data_len, self.batch_size) if i+self.batch_size < filtered_data_len]
 
         flattened_batched_data = [_value for _, _values in batched_data.items() for _value in _values]
-        
+
+        if self.shuffled:
+            random.shuffle(flattened_batched_data)
+            
         return flattened_batched_data
 
 def main():
@@ -387,10 +376,18 @@ def main():
     dec_config = "pfeiffer[output_adapter=False,monolingual_dec_adapter=True]"
 
     # Add lang adapters
-    model.add_adapter("enc_ha", config=enc_config)
+    #model.add_adapter("enc_ha", config=enc_config)
     model.add_adapter("enc_en", config=enc_config)
-    model.add_adapter("dec_en", config=dec_config)
+    model.add_adapter("enc_ig", config=enc_config)
+    model.add_adapter("enc_sw", config=enc_config)
+    model.add_adapter("enc_yo", config=enc_config)
+    
+    #model.add_adapter("dec_en", config=dec_config)
     model.add_adapter("dec_ha", config=dec_config)
+    #model.add_adapter("dec_ig", config=dec_config)
+    # model.add_adapter("dec_sw", config=dec_config)
+    # model.add_adapter("dec_yo", config=dec_config)
+    
 
     embedding_size = model.get_input_embeddings().weight.shape[0]
     if len(tokenizer) > embedding_size:
@@ -398,7 +395,7 @@ def main():
 
     processed_datasets = get_processed_dataset(
         data_path=args.data_path,
-        src_langs=['en', 'ig'],
+        src_langs=['en', 'ig','sw','yo'],
         tgt_langs=['ha'],
         tokenizer=tokenizer,
         args=args
@@ -407,19 +404,15 @@ def main():
     train_dataset = processed_datasets["train"]
     eval_dataset = processed_datasets["validation"]
 
-    train_batch_collator = LanguagePairBatchCollator(train_dataset, batch_size=args.per_device_train_batch_size, all_language_pairs=[('en', 'ha'), ('ig', 'ha')])
-    train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=10000, collate_fn=train_batch_collator)
-    eval_batch_collator = LanguagePairBatchCollator(eval_dataset, batch_size=args.per_device_eval_batch_size, all_language_pairs=[('en', 'ha'), ('ig', 'ha')])
-    eval_dataloader = DataLoader(eval_dataset, shuffle=False, collate_fn=eval_batch_collator, batch_size=10000)
+    train_batch_collator = LanguagePairBatchCollator(train_dataset, batch_size=args.per_device_train_batch_size, all_language_pairs=[('en', 'ha'), ('ig', 'ha'),('sw', 'ha'), ('yo', 'ha')], shuffled=True)
+    train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=50000, collate_fn=train_batch_collator)
+    eval_batch_collator = LanguagePairBatchCollator(eval_dataset, batch_size=args.per_device_eval_batch_size, all_language_pairs=[('en', 'ha'),('ig', 'ha'),('sw', 'ha'), ('yo', 'ha')])
+    eval_dataloader = DataLoader(eval_dataset, shuffle=False, collate_fn=eval_batch_collator, batch_size=50000)
 
     len_train_dataloader = len(list(train_dataloader)[0])
 
-    # Activate lang 
-    if args.src_lang_adapter is not None and args.tgt_lang_adapter is not None:
-        enc_lang = args.src_lang_adapter
-        dec_lang = args.tgt_lang_adapter
-        model.train_adapter_pair(ac.Pair("enc_"+enc_lang,"dec_"+dec_lang))
-        #model.set_active_adapters(ac.Pair("enc_"+enc_lang,"dec_"+dec_lang)) # this is not working for some reason
+    # Activate initial lang adapter
+    model.train_adapter_pair(ac.Pair("enc_en", "dec_ha"))
 
     no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight"]
     optimizer_grouped_parameters = [
@@ -484,6 +477,7 @@ def main():
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
+    logger.info(f"  Model Frozen = {getattr(model.base_model, 'model_frozen', False)}")
 
     progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
     completed_steps = 0
@@ -499,6 +493,7 @@ def main():
         train_dataloader_list = list(train_dataloader)[0]
         len_train_dataloader = len(train_dataloader_list)
         for step, batch in enumerate(train_dataloader_list):
+            model.train_adapter_pair(ac.Pair("enc_"+batch[0]["src_lang"],"dec_"+batch[0]["tgt_lang"]))
             _input_ids = torch.stack([torch.tensor(_x['input_ids']) for _x in batch], dim=0).cuda()
             _attention_mask = torch.stack([torch.tensor(_x['attention_mask']) for _x in batch], dim=0).cuda()
             _labels = torch.stack([torch.tensor(_x['labels']) for _x in batch], dim=0).cuda()
@@ -539,6 +534,7 @@ def main():
         eval_dataloader_list = list(eval_dataloader)[0]
         for step, batch in enumerate(eval_dataloader_list):
             with torch.no_grad():
+                model.set_active_adapters(ac.Pair("enc_"+batch[0]["src_lang"],"dec_"+batch[0]["tgt_lang"]))
                 _input_ids = torch.stack([torch.tensor(_x['input_ids']) for _x in batch], dim=0).cuda()
                 _attention_mask = torch.stack([torch.tensor(_x['attention_mask']) for _x in batch], dim=0).cuda()
                 _labels = torch.stack([torch.tensor(_x['labels']) for _x in batch], dim=0).cuda()
@@ -589,6 +585,12 @@ def main():
                 },
                 step=completed_steps,
             )
+            print({
+                    "bleu": eval_metric["score"],
+                    "train_loss": total_loss.item() / len(train_dataloader),
+                    "epoch": epoch,
+                    "step": completed_steps,
+                })
 
         if args.checkpointing_steps == "epoch":
             output_dir = f"epoch_{epoch}"
@@ -608,8 +610,11 @@ def main():
         # Save adapters
         if not os.path.exists(f'./{args.output_dir}/{experiment}'):
             os.mkdir(f'./{args.output_dir}/{experiment}')
-        model.save_adapter(f"./{args.output_dir}/{experiment}/encoder_"+args.src_lang_adapter, "enc_"+args.src_lang_adapter)
-        model.save_adapter(f"./{args.output_dir}/{experiment}/decoder_"+args.tgt_lang_adapter, "dec_"+args.tgt_lang_adapter)
+        model.save_adapter(f"./{args.output_dir}/{experiment}/encoder_english", "enc_en")
+        model.save_adapter(f"./{args.output_dir}/{experiment}/encoder_igbo", "enc_ig")
+        model.save_adapter(f"./{args.output_dir}/{experiment}/encoder_swahili", "enc_sw")
+        model.save_adapter(f"./{args.output_dir}/{experiment}/encoder_yoruba", "enc_yo")
+        model.save_adapter(f"./{args.output_dir}/{experiment}/decoder_hausa", "dec_ha")
         if accelerator.is_main_process:
             tokenizer.save_pretrained(args.output_dir)
         with open(os.path.join(args.output_dir, "all_results.json"), "w") as f:
@@ -618,5 +623,5 @@ def main():
 
 if __name__ == "__main__":
     # example of how to invoke trainer
-    # python3 -m base-trainer-with-adapter --data_path '/home/mkar/capstone/Language-Adapters/Data' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --output_dir 'mixed_training' --seed 42 --num_train_epochs 5 --with_tracking --src_lang_adapter 'en' --tgt_lang_adapter 'ha' --checkpointing_steps 'epoch'
+    # python3 -m base-trainer-with-adapter --data_path '/home/mkar/capstone/Language-Adapters/Data' --pad_to_max_length True --model_name_or_path 'm2m100_418M' --output_dir 'mixed_training/' --seed 42 --num_train_epochs 15 --with_tracking --checkpointing_steps 'epoch' --num_beams 5 >> run_info.txt
     main()
